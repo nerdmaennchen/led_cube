@@ -1,16 +1,11 @@
 *.swp
-.cproject
-.project
 
 src/build_info.h
-
-.settings/
 
 flawLess.map
 
 Legacy/
 build/
-bin/
 
 doc/doxygen/
 doc/doxyerrors.log
