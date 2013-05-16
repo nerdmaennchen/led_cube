@@ -32,7 +32,7 @@ solution "LedCube"
 		   }
 		}
 
-		buildoptions { "-Wall", "-Wextra", "-Werror", "-std=c99", "-O2"}
+		buildoptions { "-Wall", "-Wextra", "-Werror", "-std=c99", "-O0"}
 		linkoptions {
 			"-L."
 		}
@@ -59,7 +59,7 @@ solution "LedCube"
 			--  valid DEBUG SYMBOLS:
 			--    DEBUG
 			--]]
-			defines { "DEBUG", "STM32F4" }
+			defines { "DEBUG" }
 			flags { "Symbols"}
 			objdir(targetDirDebug.."/obj/")
 			buildoptions {"-g3", "-O0"}
@@ -67,7 +67,8 @@ solution "LedCube"
 			
 		configuration "RELEASE"
 			flags { "Symbols" }
-			defines { "RELEASE", "STM32F4" }
+			defines { "RELEASE"
+					,"NO_LOG_OUTPUT" }
 			objdir(targetDirRelease.."/obj/")
 			buildoptions {"-g3", "-O3"}
 			
@@ -105,11 +106,7 @@ solution "LedCube"
 		--]]
 		configuration "arm"
 			defines { "STM32F4"
-				--   ,"NO_LOG_OUTPUT" 
 					}
-			
-	--		buildoptions { "-mthumb", "-mcpu=cortex-m4", "-mfloat-abi=hard", "-mfpu=fpv4-sp-d16" }
-	--		linkoptions { "-mthumb -mcpu=cortex-m4 -mfloat-abi=hard -mfpu=fpv4-sp-d16" }
 			
 			buildoptions { "-mthumb", "-mcpu=cortex-m4", "-msoft-float" }
 			linkoptions { "-mthumb -mcpu=cortex-m4 -msoft-float" }
@@ -117,6 +114,5 @@ solution "LedCube"
 			linkoptions {
 				"-mfix-cortex-m3-ldrd",
 				"-nostartfiles",
-				"-Wl", 
 			}
 
