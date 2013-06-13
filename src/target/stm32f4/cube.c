@@ -197,7 +197,7 @@ static void onRenderMsg(msgPump_MsgID_t msgID, const void *i_data)
 					{
 						if (0 != g_frameBuf[i][j][k])
 						{
-							g_outputBuf[currentlyFreeBuffer][i].data |= (1 << (j * CUBE_CONFIG_NUMBER_OF_COLS + k));
+							g_outputBuf[currentlyFreeBuffer][i].data |= (1ULL << (j * CUBE_CONFIG_NUMBER_OF_COLS + k));
 						}
 					}
 				}
