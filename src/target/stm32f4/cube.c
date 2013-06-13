@@ -33,10 +33,6 @@
 #define CUBE_TX_DMA_STREAM DMA_STREAM_3
 #define CUBE_TX_DMA_CHANNEL 3U
 
-/*
- * probieren wir das mal mit PORTB13
- * vielleicht gab es einen Konflikt mit JTRST
- */
 #define CUBE_SPI_PORT                   GPIOB
 #define CUBE_SPI_CLK_PIN                GPIO3
 #define CUBE_SPI_MISO_PIN               GPIO4
@@ -53,6 +49,11 @@
 
 
 #define CUBE_RESET_TIME_INTERVAL_US 1
+
+/*
+ * time interval for the push latch wire to be triggered
+ */
+#define CUBE_PUSH_LATCH_PULSE_DURATION_US 50U
 
 typedef struct tag_layerGpioStruct
 {
@@ -95,15 +96,33 @@ extern cubeRenderingFunction _renderingFunctionsBegin;
 extern cubeRenderingFunction _renderingFunctionsEnd;
 static cubeRenderingFunction g_currentRenderingFunction;
 
+/*
+ * set the push latch wire
+ */
+static void cube_clearPushLatch(void)
+{
+	gpio_set(CUBE_SHIFT_REGISTERS_STORE_PORT, CUBE_SHIFT_REGISTERS_STORE_PIN);
 
+	/* resetup the dma */
+	DMA_SM0AR(CUBE_TX_DMA, CUBE_TX_DMA_STREAM)  = (uint32_t)&(g_outputBuf[g_currentOutputBuf][g_currentLayer]);
+	DMA_SCCR(CUBE_TX_DMA, CUBE_TX_DMA_STREAM)  |= DMA_CR_EN;
+}
+
+/*
+ * clear the push latch wire
+ */
 static void cube_pushLatch(void)
 {
 	gpio_clear(CUBE_SHIFT_REGISTERS_STORE_PORT, CUBE_SHIFT_REGISTERS_STORE_PIN);
 
-	gpio_set(CUBE_SHIFT_REGISTERS_STORE_PORT, CUBE_SHIFT_REGISTERS_STORE_PIN);
 	gpio_clear(CUBE_SHIFT_REGISTERS_NOE_PORT, CUBE_SHIFT_REGISTERS_NOE_PIN);
+
+	swTimer_registerOnTimerUS(&cube_clearPushLatch, CUBE_PUSH_LATCH_PULSE_DURATION_US, true);
 }
 
+/*
+ * reset the shift registers
+ */
 static void cube_reset(void)
 {
 	gpio_clear(CUBE_SHIFT_REGISTERS_N_RESET_PORT, CUBE_SHIFT_REGISTERS_N_RESET_PIN);
@@ -112,6 +131,95 @@ static void cube_reset(void)
 
 	cube_pushLatch();
 }
+
+static void cube_disableLayer(uint8_t layer)
+{
+	if (layer < CUBE_CONFIG_NUMBER_OF_LAYERS)
+	{
+		gpio_clear(g_layerGpioDefs[layer].port, g_layerGpioDefs[layer].pin);
+	}
+}
+
+static void cube_enableLayer(uint8_t layer)
+{
+	if (layer < CUBE_CONFIG_NUMBER_OF_LAYERS)
+	{
+		gpio_set(g_layerGpioDefs[layer].port, g_layerGpioDefs[layer].pin);
+	}
+}
+
+void dma2_stream3_isr(void)
+{
+	DMA_LIFCR(CUBE_TX_DMA) = (DMA_LISR(CUBE_TX_DMA) & (0x3d << 24));
+}
+
+static void onNextLayerTimer(void);
+static void onNextLayerTimer(void)
+{
+	/* enable the "new" layer" */
+	cube_disableLayer(g_currentLayer);
+
+	g_currentLayer = (g_currentLayer + 1) % CUBE_CONFIG_NUMBER_OF_LAYERS;
+
+	cube_pushLatch();
+	cube_enableLayer(g_currentLayer);
+
+	/* disable dma channel */
+	DMA_SCCR(CUBE_TX_DMA, CUBE_TX_DMA_STREAM)  = 0;
+	while (0 != (DMA_SCCR(CUBE_TX_DMA, CUBE_TX_DMA_STREAM) & DMA_CR_EN));
+	DMA_LIFCR(CUBE_TX_DMA) = (DMA_LISR(CUBE_TX_DMA) & (0x3d << 24));
+
+	/* the next dma transfer is handled after the push latch pulse is done */
+}
+
+static void onRenderMsg(msgPump_MsgID_t msgID, const void *i_data);
+static void onRenderMsg(msgPump_MsgID_t msgID, const void *i_data)
+{
+	if ((MSG_ID_TRIGGER_RENDER_FUNCTION == msgID) &&
+		(NULL != i_data))
+	{
+		const uint8_t currentlyFreeBuffer = (g_currentOutputBuf + 1U) % CUBE_BUFFER_COUNT;
+
+		/* call the current rendering function */
+		if (NULL != g_currentRenderingFunction)
+		{
+			(void)(g_currentRenderingFunction)(&g_frameBuf);
+		}
+
+		/* render from g_frameBuf */
+		{
+			uint8_t i, j, k;
+			for (i = 0U; i < CUBE_CONFIG_NUMBER_OF_LAYERS; ++i)
+			{
+				g_outputBuf[currentlyFreeBuffer][i].data = 0U;
+				for (j = 0U; j < CUBE_CONFIG_NUMBER_OF_COLS; ++j)
+				{
+					for (k = 0U; k < CUBE_CONFIG_NUMBER_OF_ROWS; ++k)
+					{
+						if (0 != g_frameBuf[i][j][k])
+						{
+							g_outputBuf[currentlyFreeBuffer][i].data |= (1 << (j * CUBE_CONFIG_NUMBER_OF_COLS + k));
+						}
+					}
+				}
+			}
+		}
+		/* use the new outputBuffer */
+
+		g_currentOutputBuf = currentlyFreeBuffer;
+	}
+}
+
+static void onTriggerRenderFunctionTimerCB(void);
+static void onTriggerRenderFunctionTimerCB(void)
+{
+	int bla = 0U;
+	msgPump_postMessage(MSG_ID_TRIGGER_RENDER_FUNCTION, &bla);
+}
+
+/******************************************************/
+/******************** INIT STUFF **********************/
+/******************************************************/
 
 static void cube_setupSpiInterface(void)
 {
@@ -159,96 +267,6 @@ static void cube_setupDMA(void)
 
 	/* enable dma */
 	DMA_SCCR(CUBE_TX_DMA, CUBE_TX_DMA_STREAM)  |= DMA_CR_EN;
-}
-
-static void cube_disableLayer(uint8_t layer)
-{
-	if (layer < CUBE_CONFIG_NUMBER_OF_LAYERS)
-	{
-		gpio_clear(g_layerGpioDefs[layer].port, g_layerGpioDefs[layer].pin);
-	}
-}
-
-static void cube_enableLayer(uint8_t layer)
-{
-	if (layer < CUBE_CONFIG_NUMBER_OF_LAYERS)
-	{
-		gpio_set(g_layerGpioDefs[layer].port, g_layerGpioDefs[layer].pin);
-	}
-}
-
-void dma2_stream3_isr(void)
-{
-	DMA_LIFCR(CUBE_TX_DMA) = (DMA_LISR(CUBE_TX_DMA) & (0x3d << 24));
-}
-
-static void onNextLayerTimer(void);
-static void onNextLayerTimer(void)
-{
-	/* enable the "new" layer" */
-	cube_disableLayer(g_currentLayer);
-
-	g_currentLayer = (g_currentLayer + 1) % CUBE_CONFIG_NUMBER_OF_LAYERS;
-
-	/* if we have rendered this buffer completely use the next one */
-	if (0 == g_currentLayer)
-	{
-		g_currentOutputBuf = (g_currentOutputBuf + 1U) % CUBE_BUFFER_COUNT;
-	}
-
-	cube_pushLatch();
-	cube_enableLayer(g_currentLayer);
-
-
-	/* disable dma channel */
-	DMA_SCCR(CUBE_TX_DMA, CUBE_TX_DMA_STREAM)  = 0;
-	while (0 != (DMA_SCCR(CUBE_TX_DMA, CUBE_TX_DMA_STREAM) & DMA_CR_EN));
-	DMA_LIFCR(CUBE_TX_DMA) = (DMA_LISR(CUBE_TX_DMA) & (0x3d << 24));
-
-	/* resetup the dma */
-	DMA_SM0AR(CUBE_TX_DMA, CUBE_TX_DMA_STREAM)  = (uint32_t)&(g_outputBuf[g_currentOutputBuf][g_currentLayer]);
-	DMA_SCCR(CUBE_TX_DMA, CUBE_TX_DMA_STREAM)  |= DMA_CR_EN;
-}
-
-static void onTriggerRenderFunctionTimerCB(void);
-static void onTriggerRenderFunctionTimerCB(void)
-{
-	int bla = 0U;
-	msgPump_postMessage(MSG_ID_TRIGGER_RENDER_FUNCTION, &bla);
-}
-
-static void onRenderMsg(msgPump_MsgID_t msgID, const void *i_data);
-static void onRenderMsg(msgPump_MsgID_t msgID, const void *i_data)
-{
-	if ((MSG_ID_TRIGGER_RENDER_FUNCTION == msgID) &&
-		(NULL != i_data))
-	{
-		const uint8_t currentlyFreeBuffer = (g_currentOutputBuf + 1U) % CUBE_BUFFER_COUNT;
-		/* call the current rendering function */
-		if (NULL != g_currentRenderingFunction)
-		{
-			(void)(g_currentRenderingFunction)(&g_frameBuf);
-		}
-
-		/* render from g_frameBuf */
-		{
-			uint8_t i, j, k;
-			for (i = 0U; i < CUBE_CONFIG_NUMBER_OF_LAYERS; ++i)
-			{
-				g_outputBuf[currentlyFreeBuffer][i].data = 0U;
-				for (j = 0U; j < CUBE_CONFIG_NUMBER_OF_COLS; ++j)
-				{
-					for (k = 0U; k < CUBE_CONFIG_NUMBER_OF_ROWS; ++k)
-					{
-						if (0 != g_frameBuf[i][j][k])
-						{
-							g_outputBuf[currentlyFreeBuffer][i].data |= (1 << (j * CUBE_CONFIG_NUMBER_OF_COLS + k));
-						}
-					}
-				}
-			}
-		}
-	}
 }
 
 static void cube_init(void);
@@ -310,8 +328,8 @@ static void cube_init(void)
 
 	cube_pushLatch();
 
-	swTimer_registerOnTimer(&onNextLayerTimer, 10, false);
-	swTimer_registerOnTimer(&onTriggerRenderFunctionTimerCB, 10, false);
+	swTimer_registerOnTimerUS(&onNextLayerTimer, CUBE_LAYER_FRAME_INTERVAL_US, false);
+	swTimer_registerOnTimer(&onTriggerRenderFunctionTimerCB, CUBE_RENDER_NEW_FRAME_INTERVAL_US, false);
 
 	msgPump_registerOnMessage(MSG_ID_TRIGGER_RENDER_FUNCTION, &onRenderMsg);
 

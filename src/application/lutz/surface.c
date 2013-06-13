@@ -22,6 +22,5 @@ static void surface_renderingFunction(cubeFrameBuf *buf)
 		}
 
 	}
-
 }
 
