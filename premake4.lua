@@ -32,7 +32,7 @@ solution "LedCube"
 		   }
 		}
 
-		buildoptions { "-Wall", "-Wextra", "-Werror", "-std=c99", "-O0"}
+		buildoptions { "-Wall", "-Wextra", "-Werror", "-std=c99", "-O2"}
 		linkoptions {
 			"-L."
 		}
@@ -70,7 +70,7 @@ solution "LedCube"
 			defines { "RELEASE"
 					,"NO_LOG_OUTPUT" }
 			objdir(targetDirRelease.."/obj/")
-			buildoptions {"-g3", "-O3"}
+			buildoptions {"-g0", "-O3"}
 			
 		--[[
 			processor location 
@@ -105,7 +105,8 @@ solution "LedCube"
 			ARM specific config	
 		--]]
 		configuration "arm"
-			defines { "STM32F4"
+			defines {
+						"STM32F4"
 					}
 			
 			buildoptions { "-mthumb", "-mcpu=cortex-m4", "-msoft-float" }

@@ -1,4 +1,4 @@
-TOOLCHAIN_PREFIX				= "/opt/fumanoids-arm/sat/bin/"
+TOOLCHAIN_PREFIX				= "/usr/bin/"
 
 GCC_ARM_CC_PATH  = TOOLCHAIN_PREFIX .. "/arm-none-eabi-gcc"
 GCC_ARM_CPP_PATH = TOOLCHAIN_PREFIX .. "/arm-none-eabi-g++"
