@@ -229,7 +229,8 @@ void reset_handler(void)
 #include <libopencm3/stm32/f4/scb.h>
 
 void blocking_handler(void)
-{	while (1) ;
+{
+	while (1) ;
 }
 
 

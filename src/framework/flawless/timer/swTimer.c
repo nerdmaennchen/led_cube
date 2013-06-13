@@ -79,24 +79,6 @@ bool swTimer_registerOnTimerUS(const timerCallback_t i_callback, timerInterval_t
 			if (NULL != handle->callback)
 			{
 				handle->tickCounter -= ticksElapsed;
-				if (0 >= handle->tickCounter) /* timer ran out */
-				{
-					/* deregister first if its one shot */
-					const timerCallback_t callback = handle->callback;
-					if (false == handle->oneShot) /* reschedule? */
-					{
-						handle->tickCounter += handle->interval;
-						if (handle->tickCounter < 0)
-						{
-							system_mutex_lock();
-							system_mutex_unlock();
-						}
-					} else
-					{
-						handle->callback = NULL;
-					}
-					(void)(callback)();
-				}
 				if ((NULL != handle->callback)) /* reschedule? */
 				{
 					nextInterval = MIN(nextInterval, handle->tickCounter);

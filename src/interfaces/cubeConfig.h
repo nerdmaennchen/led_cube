@@ -25,6 +25,6 @@
  * the duration a layer is visible
  * 4ms = 31.25 fps
  */
-#define CUBE_LAYER_FRAME_INTERVAL_US 4000UL
+#define CUBE_LAYER_FRAME_INTERVAL_US 2000UL
 
 #endif /* CUBECONFIG_H_ */
