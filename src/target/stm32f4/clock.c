@@ -31,18 +31,18 @@ static void clock_init(void)
 	/* speed things up from here so set HSE as clock source */
 	RCC_CFGR = (RCC_CFGR & ~3) | RCC_CFGR_SWS_HSE;
 
-	/* setup RTC clock from HSE and prescaler 25 */
-	RCC_CFGR = (RCC_CFGR & ~(0x1f << RCC_CFGR_RTCPRE_SHIFT)) | (25 << RCC_CFGR_RTCPRE_SHIFT);
+	/* setup RTC clock from HSE and prescaler 8 */
+	RCC_CFGR = (RCC_CFGR & ~(0x1f << RCC_CFGR_RTCPRE_SHIFT)) | (8 << RCC_CFGR_RTCPRE_SHIFT);
 
 	/* setup PLL */
 	/* select HSE as PLL source */
 	RCC_PLLCFGR |= RCC_PLLCFGR_PLLSRC;
 
-	/* set PLL entry divider to 25 => 1MHz VCO entry clock */
-	RCC_PLLCFGR = (RCC_PLLCFGR & ~(0x3f << RCC_PLLCFGR_PLLM_SHIFT)) | (25 << RCC_PLLCFGR_PLLM_SHIFT);
+	/* set PLL entry divider to 4 => 2MHz VCO entry clock */
+	RCC_PLLCFGR = (RCC_PLLCFGR & ~(0x3f << RCC_PLLCFGR_PLLM_SHIFT)) | (4 << RCC_PLLCFGR_PLLM_SHIFT);
 
-	/* set main PLL to 336 to have VCO=336MHz resulting frequency */
-	RCC_PLLCFGR = (RCC_PLLCFGR & ~(0x1ff << RCC_PLLCFGR_PLLN_SHIFT)) | (336 << RCC_PLLCFGR_PLLN_SHIFT);
+	/* set main PLL to 168 to have VCO=336MHz resulting frequency */
+	RCC_PLLCFGR = (RCC_PLLCFGR & ~(0x1ff << RCC_PLLCFGR_PLLN_SHIFT)) | (168 << RCC_PLLCFGR_PLLN_SHIFT);
 
 	/* set division factor to 2 at PLL Output */
 	RCC_PLLCFGR = (RCC_PLLCFGR & ~(0x3 << RCC_PLLCFGR_PLLP_SHIFT)) | (0 << RCC_PLLCFGR_PLLP_SHIFT);
