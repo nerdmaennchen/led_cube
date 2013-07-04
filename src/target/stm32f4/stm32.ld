@@ -61,9 +61,9 @@ SECTIONS
                 KEEP(*(.moduleInitializeFunction9*))
                 _initFunctions_End = .;
                 
-                _renderingFunctionsBegin = .;
-                KEEP(*(.cubeRenderFunctions*))
-                _renderingFunctionsEnd = .;
+                _renderingHandlesBegin = .;
+                KEEP(*(.cubeRenderHandles*))
+                _renderingHandlesEnd = .;
                 
                 . = ALIGN(1);
                 _moduleRPCHandlesBegin = .;

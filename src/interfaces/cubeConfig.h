@@ -9,9 +9,9 @@
 #define CUBECONFIG_H_
 
 
-#define CUBE_CONFIG_NUMBER_OF_LAYERS 8U
-#define CUBE_CONFIG_NUMBER_OF_ROWS   8U
-#define CUBE_CONFIG_NUMBER_OF_COLS   8U
+#define CUBE_CONFIG_NUMBER_OF_LAYERS 8
+#define CUBE_CONFIG_NUMBER_OF_ROWS   8
+#define CUBE_CONFIG_NUMBER_OF_COLS   8
 
 
 
@@ -25,6 +25,6 @@
  * the duration a layer is visible
  * 4ms = 31.25 fps
  */
-#define CUBE_LAYER_FRAME_INTERVAL_US 2000UL
+#define CUBE_LAYER_FRAME_INTERVAL_US 1000UL
 
 #endif /* CUBECONFIG_H_ */

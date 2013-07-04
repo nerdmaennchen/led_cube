@@ -19,6 +19,7 @@
 #include <libopencm3/stm32/f4/nvic_f4.h>
 #include <libopencm3/stm32/f4/nvic.h>
 
+#include <libopencm3/stm32/exti.h>
 
 #include <interfaces/systemTime.h>
 #include <interfaces/cubeConfig.h>
@@ -28,6 +29,8 @@
 
 #define CUBE_SPI                        SPI1
 
+#define CUBE_NEXT_RENDER_FUNCTION_BTN_PORT GPIOA
+#define CUBE_NEXT_RENDER_FUNCTION_BTN_PIN  GPIO0
 
 #define CUBE_TX_DMA DMA2
 #define CUBE_TX_DMA_STREAM DMA_STREAM_3
@@ -53,7 +56,7 @@
 /*
  * time interval for the push latch wire to be triggered
  */
-#define CUBE_PUSH_LATCH_PULSE_DURATION_US 1000U
+#define CUBE_PUSH_LATCH_PULSE_DURATION_US 50U
 
 typedef struct tag_layerGpioStruct
 {
@@ -63,14 +66,14 @@ typedef struct tag_layerGpioStruct
 
 static const layerGpioStruct_t g_layerGpioDefs[] =
 {
-		{GPIOE, GPIO2},
-		{GPIOE, GPIO0},
-		{GPIOC, GPIO14},
+		{GPIOB, GPIO8},
 		{GPIOC, GPIO15},
-		{GPIOE, GPIO6},
+		{GPIOC, GPIO14},
 		{GPIOC, GPIO13},
-		{GPIOE, GPIO4},
+		{GPIOE, GPIO6},
 		{GPIOE, GPIO5},
+		{GPIOE, GPIO4},
+		{GPIOE, GPIO2},
 };
 
 typedef struct tag_layerConfig
@@ -81,20 +84,20 @@ typedef struct tag_layerConfig
 
 static uint8_t g_frameBuf[CUBE_CONFIG_NUMBER_OF_LAYERS][CUBE_CONFIG_NUMBER_OF_COLS][CUBE_CONFIG_NUMBER_OF_ROWS];
 
-#define CUBE_BUFFER_COUNT 2U
+#define CUBE_BUFFER_COUNT 3U
 
 static layerConfig_t g_outputBuf[CUBE_BUFFER_COUNT][CUBE_CONFIG_NUMBER_OF_LAYERS];
 
-static uint8_t       g_currentOutputBuf = 0U;
-static uint8_t       g_currentLayer = 0U;
+static volatile uint8_t       g_currentOutputBuf = 0U;
+static volatile uint8_t       g_currentLayer = 0U;
 
 
 MSG_PUMP_DECLARE_MESSAGE_BUFFER_POOL(triggerRenderFunction, int, 2, MSG_ID_TRIGGER_RENDER_FUNCTION)
 
 
-extern cubeRenderingFunction _renderingFunctionsBegin;
-extern cubeRenderingFunction _renderingFunctionsEnd;
-static cubeRenderingFunction g_currentRenderingFunction;
+extern cubeRenderingHandle_t _renderingHandlesBegin;
+extern cubeRenderingHandle_t _renderingHandlesEnd;
+static cubeRenderingHandle_t *g_currentRenderingHandle;
 
 static void onNextLayerTimer(void);
 
@@ -120,7 +123,6 @@ static void cube_enableLayer(uint8_t layer)
  */
 static void cube_clearPushLatch(void)
 {
-
 	gpio_clear(CUBE_SHIFT_REGISTERS_STORE_PORT, CUBE_SHIFT_REGISTERS_STORE_PIN);
 
 	/* resetup the dma */
@@ -137,6 +139,7 @@ static void cube_pushLatch(void)
 {
 	/* enable the "new" layer" */
 	cube_disableLayer(g_currentLayer);
+
 	gpio_set(CUBE_SHIFT_REGISTERS_STORE_PORT, CUBE_SHIFT_REGISTERS_STORE_PIN);
 	g_currentLayer = (g_currentLayer + 1) % CUBE_CONFIG_NUMBER_OF_LAYERS;
 	cube_enableLayer(g_currentLayer);
@@ -180,9 +183,10 @@ static void onRenderMsg(msgPump_MsgID_t msgID, const void *i_data)
 		const uint8_t currentlyFreeBuffer = (g_currentOutputBuf + 1U) % CUBE_BUFFER_COUNT;
 
 		/* call the current rendering function */
-		if (NULL != g_currentRenderingFunction)
+		if ((NULL != g_currentRenderingHandle) &&
+				(NULL != g_currentRenderingHandle->renderFunction))
 		{
-			(void)(g_currentRenderingFunction)(&g_frameBuf);
+			(void)(g_currentRenderingHandle->renderFunction)(&g_frameBuf);
 		}
 
 		/* render from g_frameBuf */
@@ -190,7 +194,7 @@ static void onRenderMsg(msgPump_MsgID_t msgID, const void *i_data)
 			uint8_t i, j, k;
 			for (i = 0U; i < CUBE_CONFIG_NUMBER_OF_LAYERS; ++i)
 			{
-				g_outputBuf[currentlyFreeBuffer][i].data = 0U;
+				g_outputBuf[currentlyFreeBuffer][i].data = 0ULL;
 				for (j = 0U; j < CUBE_CONFIG_NUMBER_OF_COLS; ++j)
 				{
 					for (k = 0U; k < CUBE_CONFIG_NUMBER_OF_ROWS; ++k)
@@ -198,6 +202,10 @@ static void onRenderMsg(msgPump_MsgID_t msgID, const void *i_data)
 						if (0 != g_frameBuf[i][j][k])
 						{
 							g_outputBuf[currentlyFreeBuffer][i].data |= (1ULL << (j * CUBE_CONFIG_NUMBER_OF_COLS + k));
+							if (1ULL == g_outputBuf[currentlyFreeBuffer][i].data)
+							{
+								g_outputBuf[currentlyFreeBuffer][i].data = 1ULL;
+							}
 						}
 					}
 				}
@@ -216,6 +224,34 @@ static void onTriggerRenderFunctionTimerCB(void)
 	msgPump_postMessage(MSG_ID_TRIGGER_RENDER_FUNCTION, &bla);
 }
 
+static void buttonEvaluation(void);
+static void buttonEvaluation(void)
+{
+	++g_currentRenderingHandle;
+	if (g_currentRenderingHandle >= &_renderingHandlesEnd)
+	{
+		g_currentRenderingHandle = &_renderingHandlesBegin;
+	}
+
+	if (NULL != g_currentRenderingHandle->initFunction)
+	{
+		(void)(g_currentRenderingHandle->initFunction)(&g_frameBuf);
+	}
+
+	EXTI_IMR |= CUBE_NEXT_RENDER_FUNCTION_BTN_PIN;
+}
+
+
+void exti0_isr(void)
+{
+	swTimer_registerOnTimerUS(&buttonEvaluation, 100000, true);
+
+	EXTI_IMR &= ~CUBE_NEXT_RENDER_FUNCTION_BTN_PIN;
+	/* clear interupt pending bit */
+	const uint32_t bla = EXTI_PR;
+	EXTI_PR = (bla & (1 << 0));
+}
+
 /******************************************************/
 /******************** INIT STUFF **********************/
 /******************************************************/
@@ -224,7 +260,7 @@ static void cube_setupSpiInterface(void)
 {
 	RCC_APB2ENR |= RCC_APB2ENR_SPI1EN;
 	SPI_CR2(CUBE_SPI)  = SPI_CR2_TXDMAEN;
-	SPI_CR1(CUBE_SPI)  = SPI_CR1_BAUDRATE_FPCLK_DIV_128;
+	SPI_CR1(CUBE_SPI)  = SPI_CR1_BAUDRATE_FPCLK_DIV_64;
 	SPI_CR1(CUBE_SPI) |= SPI_CR1_SSM | SPI_CR1_SSI;
 	SPI_CR1(CUBE_SPI) |= SPI_CR1_MSTR;
 	SPI_CR1(CUBE_SPI) |= SPI_CR1_SPE;
@@ -277,6 +313,8 @@ static void cube_init(void)
 
 	RCC_AHB1ENR |= RCC_AHB1ENR_DMA2EN;
 
+	RCC_APB2ENR |= RCC_APB2ENR_SYSCFGEN;
+
 	gpio_mode_setup(CUBE_SPI_PORT, GPIO_MODE_AF, GPIO_PUPD_NONE, CUBE_SPI_CLK_PIN | CUBE_SPI_MOSI_PIN);
 
 	gpio_set_output_options(CUBE_SPI_PORT, GPIO_OTYPE_OD, GPIO_OSPEED_100MHZ, CUBE_SPI_CLK_PIN | CUBE_SPI_MOSI_PIN);
@@ -306,6 +344,15 @@ static void cube_init(void)
 		gpio_clear(g_layerGpioDefs[i].port, g_layerGpioDefs[i].pin);
 	}
 
+	/* setup the button */
+	EXTI_RTSR |= CUBE_NEXT_RENDER_FUNCTION_BTN_PIN;
+	EXTI_IMR  |= CUBE_NEXT_RENDER_FUNCTION_BTN_PIN;
+	gpio_mode_setup(CUBE_NEXT_RENDER_FUNCTION_BTN_PORT, GPIO_MODE_INPUT, GPIO_PUPD_NONE, CUBE_NEXT_RENDER_FUNCTION_BTN_PIN);
+	/* clear interupt pending bit */
+	const uint32_t bla = EXTI_PR;
+	EXTI_PR = (bla & (1 << 0));
+	nvic_enable_irq(NVIC_EXTI0_IRQ);
+
 	/* wait some time to be sure that the mosfets are nonconducting */
 	{
 		const systemTime_t curTime = getSystemTimeUS();
@@ -313,18 +360,9 @@ static void cube_init(void)
 	}
 
 	memset(g_frameBuf, 0, sizeof(g_frameBuf));
-//	memset(g_outputBuf, 0xaa, sizeof(g_outputBuf));
-	g_outputBuf[0][0].data = 0x11;
-	g_outputBuf[0][1].data = 0x22;
-	g_outputBuf[0][2].data = 0x33;
-	g_outputBuf[0][3].data = 0x44;
-	g_outputBuf[0][4].data = 0x55;
-	g_outputBuf[0][5].data = 0x66;
-	g_outputBuf[0][6].data = 0x77;
-	g_outputBuf[0][7].data = 0x88;
 
 	g_currentOutputBuf = 0U;
-	g_currentLayer = CUBE_CONFIG_NUMBER_OF_LAYERS - 1U;
+	g_currentLayer = 0U;
 
 	/* setup the spi interface */
 	cube_setupSpiInterface();
@@ -338,10 +376,21 @@ static void cube_init(void)
 
 	msgPump_registerOnMessage(MSG_ID_TRIGGER_RENDER_FUNCTION, &onRenderMsg);
 
-	g_currentRenderingFunction = NULL;
-	if (&_renderingFunctionsEnd > &_renderingFunctionsBegin)
+	g_currentRenderingHandle = NULL;
+	if (&_renderingHandlesEnd > &_renderingHandlesBegin)
 	{
-		g_currentRenderingFunction = _renderingFunctionsBegin;
+		g_currentRenderingHandle = &_renderingHandlesBegin;
+
+		if (NULL != g_currentRenderingHandle->initFunction)
+		{
+			(void)(g_currentRenderingHandle->initFunction)(&g_frameBuf);
+		}
+	}
+
+	if (NULL != g_currentRenderingHandle &&
+		(NULL != g_currentRenderingHandle->initFunction))
+	{
+		(void)(g_currentRenderingHandle->initFunction)(&g_frameBuf);
 	}
 
 	cube_enableLayer(g_currentLayer);
