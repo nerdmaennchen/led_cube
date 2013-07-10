@@ -20,13 +20,12 @@ static uint8_t g_dropletPositions[MAX_NUM_DROPLETS];
 
 #define DROPLET_HEIGHT 1U
 
-#define DROPLET_SPAWN_INTERVAL_US 60000ULL
+#define DROPLET_SPAWN_INTERVAL_US 80000ULL
 
-#define DROPLET_FALL_INTERVALL_US 50000ULL
+#define DROPLET_FALL_INTERVALL_US 70000ULL
 
 
 static void rain_renderingFunction(cubeFrameBuf *buf);
-CUBE_RENDER_FUNCTION(rain_renderingFunction, NULL)
 static void rain_renderingFunction(cubeFrameBuf *buf)
 {
 	uint32_t randomNr = getRandomNumber();
@@ -87,17 +86,18 @@ static void rain_renderingFunction(cubeFrameBuf *buf)
 			}
 		}
 	}
-
 }
 
-static void rain_init(void);
-MODULE_INIT_FUNCTION(rain, 9, rain_init)
-static void rain_init(void)
+static void rain_init(cubeFrameBuf *buf);
+static void rain_init(cubeFrameBuf *buf)
 {
 	uint8_t i;
 	for (i = 0U; i < MAX_NUM_DROPLETS; ++i)
 	{
 		g_dropletPositions[i] = 0xff;
 	}
+	UNUSED(buf);
 }
 
+
+CUBE_RENDER_FUNCTION(rain_renderingFunction, rain_init, 20000000ULL);

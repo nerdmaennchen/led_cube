@@ -115,5 +115,5 @@ static void topDownSwap_renderingFunction(cubeFrameBuf *buf)
 }
 
 
-CUBE_RENDER_FUNCTION(topDownSwap_renderingFunction, initTopDownRendering);
+CUBE_RENDER_FUNCTION(topDownSwap_renderingFunction, initTopDownRendering, 20000000ULL);
 

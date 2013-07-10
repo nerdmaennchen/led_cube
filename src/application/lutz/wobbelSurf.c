@@ -87,4 +87,4 @@ static void wobbelSurf_renderingFunction(cubeFrameBuf *buf)
 }
 
 
-CUBE_RENDER_FUNCTION(wobbelSurf_renderingFunction, wobbelSurf_initFunction)
+CUBE_RENDER_FUNCTION(wobbelSurf_renderingFunction, wobbelSurf_initFunction, 10000000ULL)
