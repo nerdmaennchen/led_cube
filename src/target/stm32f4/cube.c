@@ -82,7 +82,7 @@ typedef struct tag_layerConfig
 	uint64_t data; /* 64 bit.. for every LED in a layer one bit*/
 } layerConfig_t;
 
-static uint8_t g_frameBuf[CUBE_CONFIG_NUMBER_OF_LAYERS][CUBE_CONFIG_NUMBER_OF_COLS][CUBE_CONFIG_NUMBER_OF_ROWS];
+static cubeFrameBuf g_frameBuf;
 
 #define CUBE_BUFFER_COUNT 3U
 
@@ -199,13 +199,9 @@ static void onRenderMsg(msgPump_MsgID_t msgID, const void *i_data)
 				{
 					for (k = 0U; k < CUBE_CONFIG_NUMBER_OF_ROWS; ++k)
 					{
-						if (0 != g_frameBuf[i][j][k])
+						if (0 < g_frameBuf[i][j][k])
 						{
 							g_outputBuf[currentlyFreeBuffer][i].data |= (1ULL << (j * CUBE_CONFIG_NUMBER_OF_COLS + k));
-							if (1ULL == g_outputBuf[currentlyFreeBuffer][i].data)
-							{
-								g_outputBuf[currentlyFreeBuffer][i].data = 1ULL;
-							}
 						}
 					}
 				}
@@ -224,8 +220,8 @@ static void onTriggerRenderFunctionTimerCB(void)
 	msgPump_postMessage(MSG_ID_TRIGGER_RENDER_FUNCTION, &bla);
 }
 
-static void buttonEvaluation(void);
-static void buttonEvaluation(void)
+static void triggerNextRenderFunction(void);
+static void triggerNextRenderFunction(void)
 {
 	++g_currentRenderingHandle;
 	if (g_currentRenderingHandle >= &_renderingHandlesEnd)
@@ -237,13 +233,20 @@ static void buttonEvaluation(void)
 	{
 		(void)(g_currentRenderingHandle->initFunction)(&g_frameBuf);
 	}
+	swTimer_registerOnTimerUS(&triggerNextRenderFunction, g_currentRenderingHandle->presentationTimeUS, true);
+}
 
+static void buttonEvaluation(void);
+static void buttonEvaluation(void)
+{
+	triggerNextRenderFunction();
 	EXTI_IMR |= CUBE_NEXT_RENDER_FUNCTION_BTN_PIN;
 }
 
 
 void exti0_isr(void)
 {
+	/* software debouncing by waiting some time to reenable the interrupt */
 	swTimer_registerOnTimerUS(&buttonEvaluation, 100000, true);
 
 	EXTI_IMR &= ~CUBE_NEXT_RENDER_FUNCTION_BTN_PIN;
@@ -373,6 +376,9 @@ static void cube_init(void)
 
 	swTimer_registerOnTimerUS(&onNextLayerTimer, CUBE_LAYER_FRAME_INTERVAL_US, true);
 	swTimer_registerOnTimerUS(&onTriggerRenderFunctionTimerCB, CUBE_RENDER_NEW_FRAME_INTERVAL_US, false);
+
+	swTimer_registerOnTimerUS(&triggerNextRenderFunction, CUBE_NEXT_RENDERING_FUNCTION_INTERVAL_US, true);
+
 
 	msgPump_registerOnMessage(MSG_ID_TRIGGER_RENDER_FUNCTION, &onRenderMsg);
 

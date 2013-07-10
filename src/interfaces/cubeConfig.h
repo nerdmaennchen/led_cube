@@ -20,6 +20,11 @@
  */
 #define CUBE_RENDER_NEW_FRAME_INTERVAL_US 50000UL
 
+/*
+ * change to next rendering function each ... us
+ */
+#define CUBE_NEXT_RENDERING_FUNCTION_INTERVAL_US 15000000ULL
+
 
 /*
  * the duration a layer is visible
